@@ -117,10 +117,18 @@ export async function validatePlaylistUrl(url: string): Promise<{ valid: boolean
     const validExtensions = [".m3u", ".m3u8"]
     const hasValidExtension = validExtensions.some((ext) => url.toLowerCase().includes(ext))
 
-    if (!hasValidExtension) {
+    // Check for common M3U query parameters used by IPTV providers
+    const searchParams = urlObj.searchParams
+    const hasM3UParam =
+      searchParams.get("type")?.toLowerCase().includes("m3u") ||
+      searchParams.get("output")?.toLowerCase().includes("m3u") ||
+      searchParams.get("format")?.toLowerCase().includes("m3u")
+
+    // Accept URL if it has valid extension OR M3U-related query parameters
+    if (!hasValidExtension && !hasM3UParam) {
       return {
         valid: false,
-        error: "URL should point to an M3U or M3U8 file",
+        error: "URL should point to an M3U or M3U8 file, or include M3U-related parameters",
       }
     }
 

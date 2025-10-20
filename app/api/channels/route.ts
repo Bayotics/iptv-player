@@ -32,7 +32,18 @@ export async function GET(request: NextRequest) {
 
     const channels = await Channel.find(query).sort({ name: 1 }).limit(100)
 
-    return NextResponse.json({ channels })
+    const mappedChannels = channels.map((channel) => ({
+      id: channel._id.toString(),
+      name: channel.name,
+      logo: channel.tvgLogo,
+      group: channel.groupTitle,
+      streamUrl: channel.streamUrl,
+      type: channel.type,
+      tvgId: channel.tvgId,
+      metadata: channel.metadata,
+    }))
+
+    return NextResponse.json({ channels: mappedChannels })
   } catch (error) {
     console.error("Channels fetch error:", error)
     return NextResponse.json({ error: "Failed to fetch channels" }, { status: 500 })

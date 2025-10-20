@@ -38,7 +38,15 @@ export function MoviesContent() {
 
   const fetchMovies = async () => {
     try {
-      const response = await fetch("/api/channels?type=movie")
+      const activePlaylistId = localStorage.getItem("activePlaylistId")
+
+      if (!activePlaylistId) {
+        setError("No active playlist found. Please add a playlist first.")
+        setIsLoading(false)
+        return
+      }
+
+      const response = await fetch(`/api/channels?type=movie&playlistId=${activePlaylistId}`)
       const data = await response.json()
 
       if (!response.ok) {

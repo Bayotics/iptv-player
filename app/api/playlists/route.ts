@@ -36,11 +36,14 @@ export async function POST(request: NextRequest) {
     // Parse the playlist
     const parseResult = parseM3U(m3uContent)
 
+    const contentSize = new Blob([m3uContent]).size
+    const shouldStoreContent = contentSize < 1024 * 1024 // 1MB limit
+
     // Create playlist
     const playlist = await Playlist.create({
       name,
       url,
-      content: m3uContent,
+      content: shouldStoreContent ? m3uContent : undefined, // Only store small playlists
       deviceKey,
       isActive: true,
       lastParsed: new Date(),

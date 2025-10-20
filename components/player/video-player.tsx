@@ -78,6 +78,7 @@ export function VideoPlayer() {
         throw new Error(data.error || "Failed to fetch channel")
       }
 
+      console.log("[v0] Channel fetched:", data.channel)
       setChannel(data.channel)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load channel")
@@ -85,82 +86,206 @@ export function VideoPlayer() {
     }
   }
 
-  const initializePlayer = () => {
+  const initializePlayer = async () => {
     const video = videoRef.current
     if (!video || !channel) return
 
-    const streamUrl = channel.streamUrl
+    let streamUrl = channel.streamUrl
+    console.log("[v0] Original stream URL:", streamUrl)
 
-    // Check if HLS is supported
-    if (streamUrl.includes(".m3u8")) {
-      if (Hls.isSupported()) {
-        const hls = new Hls({
-          enableWorker: true,
-          lowLatencyMode: true,
-          backBufferLength: 90,
-        })
-
-        hls.loadSource(streamUrl)
-        hls.attachMedia(video)
-
-        hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
-          console.log("[v0] HLS manifest parsed, levels:", data.levels.length)
-          const availableQualities = data.levels.map((level, index) => `${level.height}p`)
-          setQualities(["auto", ...availableQualities])
-          setIsLoading(false)
-          video.play()
-        })
-
-        hls.on(Hls.Events.ERROR, (event, data) => {
-          console.error("[v0] HLS error:", data)
-          if (data.fatal) {
-            switch (data.type) {
-              case Hls.ErrorTypes.NETWORK_ERROR:
-                setError("Network error - trying to recover")
-                hls.startLoad()
-                break
-              case Hls.ErrorTypes.MEDIA_ERROR:
-                setError("Media error - trying to recover")
-                hls.recoverMediaError()
-                break
-              default:
-                setError("Fatal error - cannot play stream")
-                hls.destroy()
-                break
-            }
-          }
-        })
-
-        hlsRef.current = hls
-      } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-        // Native HLS support (Safari)
-        video.src = streamUrl
-        video.addEventListener("loadedmetadata", () => {
-          setIsLoading(false)
-          video.play()
-        })
-      } else {
-        setError("HLS is not supported in this browser")
-        setIsLoading(false)
-      }
-    } else {
-      // Direct stream URL
-      video.src = streamUrl
-      video.addEventListener("loadedmetadata", () => {
-        setIsLoading(false)
-        video.play()
+    try {
+      const resolveResponse = await fetch("/api/stream/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: streamUrl }),
       })
+
+      if (resolveResponse.ok) {
+        const resolveData = await resolveResponse.json()
+        console.log("[v0] Stream URL resolved:", resolveData.resolvedUrl)
+        console.log("[v0] Content-Type:", resolveData.contentType)
+        streamUrl = resolveData.resolvedUrl
+      } else {
+        console.warn("[v0] Failed to resolve URL, using original")
+      }
+    } catch (err) {
+      console.warn("[v0] Error resolving URL, using original:", err)
     }
 
-    // Video event listeners
-    video.addEventListener("play", () => setIsPlaying(true))
-    video.addEventListener("pause", () => setIsPlaying(false))
+    console.log("[v0] Final stream URL:", streamUrl)
+
+    if (Hls.isSupported()) {
+      console.log("[v0] Attempting HLS.js playback (works for both HLS and TS streams)")
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: true,
+        backBufferLength: 90,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 600,
+        xhrSetup: (xhr, url) => {
+          console.log("[v0] XHR setup for URL:", url)
+          xhr.withCredentials = false
+        },
+      })
+
+      hls.loadSource(streamUrl)
+      hls.attachMedia(video)
+
+      hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
+        console.log("[v0] HLS manifest parsed successfully, levels:", data.levels.length)
+        const availableQualities = data.levels.map((level, index) => `${level.height}p`)
+        setQualities(["auto", ...availableQualities])
+        setIsLoading(false)
+        video.play().catch((err) => {
+          console.error("[v0] Autoplay failed:", err)
+          setError("Click play to start the stream")
+          setIsLoading(false)
+        })
+      })
+
+      hls.on(Hls.Events.ERROR, (event, data) => {
+        console.error("[v0] HLS error:", data.type, data.details, data.fatal)
+
+        if (data.fatal) {
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              console.log("[v0] Network error, attempting to recover...")
+              setError("Network error - retrying...")
+              setTimeout(() => {
+                hls.startLoad()
+              }, 1000)
+              break
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              console.log("[v0] Media error, attempting to recover...")
+              setError("Media error - retrying...")
+              hls.recoverMediaError()
+              break
+            default:
+              console.error("[v0] Fatal HLS error, trying direct video playback as fallback")
+              setError("Trying alternative playback method...")
+              hls.destroy()
+              hlsRef.current = null
+              tryDirectPlayback(streamUrl)
+              break
+          }
+        }
+      })
+
+      hlsRef.current = hls
+    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      console.log("[v0] Using native HLS support (Safari)")
+      video.src = streamUrl
+      video.addEventListener("loadedmetadata", () => {
+        console.log("[v0] Video metadata loaded")
+        setIsLoading(false)
+        video.play().catch((err) => {
+          console.error("[v0] Autoplay failed:", err)
+          setError("Click play to start the stream")
+        })
+      })
+      video.addEventListener("error", (e) => {
+        console.error("[v0] Video error:", e)
+        setError("Failed to load stream")
+        setIsLoading(false)
+      })
+    } else {
+      console.log("[v0] HLS.js not supported, using direct video playback")
+      tryDirectPlayback(streamUrl)
+    }
+
+    video.addEventListener("play", () => {
+      console.log("[v0] Video playing")
+      setIsPlaying(true)
+    })
+    video.addEventListener("pause", () => {
+      console.log("[v0] Video paused")
+      setIsPlaying(false)
+    })
     video.addEventListener("timeupdate", () => setCurrentTime(video.currentTime))
     video.addEventListener("durationchange", () => setDuration(video.duration))
     video.addEventListener("volumechange", () => {
       setVolume(video.volume * 100)
       setIsMuted(video.muted)
     })
+    video.addEventListener("waiting", () => {
+      console.log("[v0] Video buffering...")
+    })
+    video.addEventListener("canplay", () => {
+      console.log("[v0] Video can play")
+      setIsLoading(false)
+    })
+  }
+
+  const tryDirectPlayback = (streamUrl: string) => {
+    const video = videoRef.current
+    if (!video) return
+
+    console.log("[v0] Setting up direct video playback")
+    video.src = streamUrl
+    video.crossOrigin = "anonymous"
+
+    const handleLoadedMetadata = () => {
+      console.log("[v0] Direct playback: metadata loaded")
+      console.log("[v0] Video duration:", video.duration)
+      console.log("[v0] Video ready state:", video.readyState)
+      setIsLoading(false)
+      setError("")
+      video.play().catch((err) => {
+        console.error("[v0] Direct playback autoplay failed:", err)
+        setError("Click play to start the stream")
+        setIsLoading(false)
+      })
+    }
+
+    const handleCanPlay = () => {
+      console.log("[v0] Direct playback: can play")
+      setIsLoading(false)
+      setError("")
+    }
+
+    const handleError = (e: Event) => {
+      console.error("[v0] Direct playback error event:", e)
+      console.error("[v0] Video error details:", video.error)
+
+      let errorMessage = "Unable to play stream"
+      if (video.error) {
+        switch (video.error.code) {
+          case MediaError.MEDIA_ERR_ABORTED:
+            errorMessage = "Stream loading was aborted"
+            break
+          case MediaError.MEDIA_ERR_NETWORK:
+            errorMessage = "Network error while loading stream"
+            break
+          case MediaError.MEDIA_ERR_DECODE:
+            errorMessage = "Stream format not supported or corrupted"
+            break
+          case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+            errorMessage = "Stream format not supported by your browser"
+            break
+        }
+      }
+
+      setError(errorMessage)
+      setIsLoading(false)
+    }
+
+    const handleWaiting = () => {
+      console.log("[v0] Video buffering...")
+    }
+
+    const handlePlaying = () => {
+      console.log("[v0] Video is playing")
+      setIsLoading(false)
+      setError("")
+    }
+
+    video.addEventListener("loadedmetadata", handleLoadedMetadata)
+    video.addEventListener("canplay", handleCanPlay)
+    video.addEventListener("error", handleError)
+    video.addEventListener("waiting", handleWaiting)
+    video.addEventListener("playing", handlePlaying)
+
+    video.load()
   }
 
   const togglePlay = () => {
@@ -168,7 +293,10 @@ export function VideoPlayer() {
       if (isPlaying) {
         videoRef.current.pause()
       } else {
-        videoRef.current.play()
+        videoRef.current.play().catch((err) => {
+          console.error("[v0] Play failed:", err)
+          setError("Failed to play stream")
+        })
       }
     }
   }
@@ -288,11 +416,11 @@ export function VideoPlayer() {
       onMouseMove={handleMouseMove}
       onMouseLeave={() => isPlaying && setShowControls(false)}
     >
-      <video ref={videoRef} className="h-full w-full" onClick={togglePlay} crossOrigin="anonymous" />
+      <video ref={videoRef} className="h-full w-full" onClick={togglePlay} />
 
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="text-white">Loading...</div>
+          <div className="text-white">Loading stream...</div>
         </div>
       )}
 

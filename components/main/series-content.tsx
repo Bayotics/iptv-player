@@ -38,7 +38,15 @@ export function SeriesContent() {
 
   const fetchSeries = async () => {
     try {
-      const response = await fetch("/api/channels?type=series")
+      const activePlaylistId = localStorage.getItem("activePlaylistId")
+
+      if (!activePlaylistId) {
+        setError("No active playlist found. Please add a playlist first.")
+        setIsLoading(false)
+        return
+      }
+
+      const response = await fetch(`/api/channels?type=series&playlistId=${activePlaylistId}`)
       const data = await response.json()
 
       if (!response.ok) {
