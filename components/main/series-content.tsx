@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Search, Play, Grid3x3, List } from "lucide-react"
+import { Search, Play, Grid3x3, List, ChevronLeft, ChevronRight } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface Series {
@@ -20,24 +20,32 @@ interface Series {
 
 export function SeriesContent() {
   const router = useRouter()
-  const [series, setSeries] = useState<Series[]>([])
+  const [allSeries, setAllSeries] = useState<Series[]>([])
   const [filteredSeries, setFilteredSeries] = useState<Series[]>([])
+  const [displayedSeries, setDisplayedSeries] = useState<Series[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedGroup, setSelectedGroup] = useState<string>("all")
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 50
 
   useEffect(() => {
-    fetchSeries()
+    fetchAllSeries()
   }, [])
 
   useEffect(() => {
     filterSeries()
-  }, [searchQuery, selectedGroup, series])
+  }, [searchQuery, selectedGroup, allSeries])
 
-  const fetchSeries = async () => {
+  useEffect(() => {
+    paginateSeries()
+  }, [currentPage, filteredSeries])
+
+  const fetchAllSeries = async () => {
     try {
+      setIsLoading(true)
       const activePlaylistId = localStorage.getItem("activePlaylistId")
 
       if (!activePlaylistId) {
@@ -53,7 +61,8 @@ export function SeriesContent() {
         throw new Error(data.error || "Failed to fetch series")
       }
 
-      setSeries(data.channels || [])
+      const sortedSeries = (data.channels || []).sort((a: Series, b: Series) => a.name.localeCompare(b.name))
+      setAllSeries(sortedSeries)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load series")
     } finally {
@@ -62,7 +71,7 @@ export function SeriesContent() {
   }
 
   const filterSeries = () => {
-    let filtered = series
+    let filtered = allSeries
 
     if (selectedGroup !== "all") {
       filtered = filtered.filter((s) => s.group === selectedGroup)
@@ -73,9 +82,32 @@ export function SeriesContent() {
     }
 
     setFilteredSeries(filtered)
+    setCurrentPage(1) // Reset to first page when filters change
   }
 
-  const groups = ["all", ...Array.from(new Set(series.map((s) => s.group).filter(Boolean)))]
+  const paginateSeries = () => {
+    const startIndex = (currentPage - 1) * itemsPerPage
+    const endIndex = startIndex + itemsPerPage
+    setDisplayedSeries(filteredSeries.slice(startIndex, endIndex))
+  }
+
+  const totalPages = Math.ceil(filteredSeries.length / itemsPerPage)
+
+  const goToNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1)
+      window.scrollTo({ top: 0, behavior: "smooth" })
+    }
+  }
+
+  const goToPreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1)
+      window.scrollTo({ top: 0, behavior: "smooth" })
+    }
+  }
+
+  const groups = ["all", ...Array.from(new Set(allSeries.map((s) => s.group).filter(Boolean)))]
 
   const handlePlaySeries = (seriesItem: Series) => {
     router.push(`/player?channelId=${seriesItem.id}`)
@@ -84,7 +116,12 @@ export function SeriesContent() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-10 w-full" />
+        <div className="flex items-center justify-center py-8">
+          <div className="text-center">
+            <div className="mb-4 text-lg font-semibold">Loading all series...</div>
+            <p className="text-sm text-muted-foreground">This may take a moment for large playlists</p>
+          </div>
+        </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {Array.from({ length: 10 }).map((_, i) => (
             <Skeleton key={i} className="aspect-[2/3]" />
@@ -108,7 +145,7 @@ export function SeriesContent() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search series..."
+            placeholder="Search all series..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
@@ -122,6 +159,19 @@ export function SeriesContent() {
             <List className="h-4 w-4" />
           </Button>
         </div>
+      </div>
+
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <span>
+          {filteredSeries.length === allSeries.length
+            ? `${allSeries.length.toLocaleString()} total series loaded`
+            : `${filteredSeries.length.toLocaleString()} of ${allSeries.length.toLocaleString()} series`}
+        </span>
+        {totalPages > 1 && (
+          <span>
+            Page {currentPage} of {totalPages}
+          </span>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -143,7 +193,7 @@ export function SeriesContent() {
         </div>
       ) : viewMode === "grid" ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-          {filteredSeries.map((seriesItem) => (
+          {displayedSeries.map((seriesItem) => (
             <Card
               key={seriesItem.id}
               className="group cursor-pointer overflow-hidden transition-all hover:shadow-lg"
@@ -176,7 +226,7 @@ export function SeriesContent() {
         </div>
       ) : (
         <div className="space-y-2">
-          {filteredSeries.map((seriesItem) => (
+          {displayedSeries.map((seriesItem) => (
             <Card
               key={seriesItem.id}
               className="cursor-pointer transition-all hover:shadow-md"
@@ -202,6 +252,22 @@ export function SeriesContent() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-4">
+          <Button onClick={goToPreviousPage} disabled={currentPage === 1} variant="outline">
+            <ChevronLeft className="mr-2 h-4 w-4" />
+            Previous
+          </Button>
+          <span className="px-4 text-sm text-muted-foreground">
+            Page {currentPage} of {totalPages}
+          </span>
+          <Button onClick={goToNextPage} disabled={currentPage === totalPages} variant="outline">
+            Next
+            <ChevronRight className="ml-2 h-4 w-4" />
+          </Button>
         </div>
       )}
     </div>
