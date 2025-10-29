@@ -12,9 +12,9 @@ import { DeviceKeyForm } from "@/components/activation/device-key-form"
 import { PreviewModal } from "@/components/activation/preview-modal"
 import { getDeviceKey } from "@/lib/device-utils"
 import { MOCK_M3U_CONTENT } from "@/lib/mock-data"
-import { Tv2, AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { QRCodeCard } from "@/components/activation/qr-code-card"
+import Image from "next/image"
 
 export default function ActivatePage() {
   const router = useRouter()
@@ -157,16 +157,21 @@ export default function ActivatePage() {
         <div className="flex-1">
           <Card className="w-full border-white/10 bg-black/20 backdrop-blur-lg">
             <CardHeader className="text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary">
-                <Tv2 className="h-8 w-8 text-primary-foreground" />
+              <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center">
+                <Image
+                  src="/logo.png"
+                  alt="Supreme IPTV"
+                  width={140}
+                  height={140}
+                  className="h-full w-full object-contain"
+                />
               </div>
-              <CardTitle className="text-3xl">Welcome to IPTV Player</CardTitle>
+              <CardTitle className="text-3xl">Welcome to Supreme IPTV</CardTitle>
               <CardDescription className="text-base">Add your first playlist to get started</CardDescription>
             </CardHeader>
             <CardContent>
               {error && (
                 <Alert variant="destructive" className="mb-4">
-                  <AlertCircle className="h-4 w-4" />
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}

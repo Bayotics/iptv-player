@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Tv2, Film, Clapperboard, User, Menu, Settings, RefreshCw, LogOut, List } from "lucide-react"
+import Image from "next/image"
 
 type NavSection = "live" | "movies" | "series" | "account"
 
@@ -39,9 +40,9 @@ export function MainNav({
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-16 items-center gap-4 px-6">
-        <div className="flex items-center gap-2">
-          <Tv2 className="h-6 w-6 text-primary" />
-          <span className="text-xl font-bold">IPTV Player</span>
+        <div className="flex items-center gap-3">
+          <Image src="/logo.png" alt="Supreme IPTV" width={60} height={60} className="h-10 w-10 object-contain" />
+          <span className="text-xl font-bold">Supreme IPTV</span>
         </div>
 
         {/* Desktop Navigation */}
