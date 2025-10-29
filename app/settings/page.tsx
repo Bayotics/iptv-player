@@ -69,7 +69,7 @@ export default function SettingsPage() {
         setPlaylists(playlistsWithActive)
       }
     } catch (err) {
-      console.error("[v0] Failed to load playlists:", err)
+      console.error(" Failed to load playlists:", err)
     }
   }
 
@@ -99,7 +99,7 @@ export default function SettingsPage() {
         setTimeout(() => setSaveMessage(""), 3000)
       }
     } catch (err) {
-      console.error("[v0] Failed to delete playlist:", err)
+      console.error(" Failed to delete playlist:", err)
     }
   }
 

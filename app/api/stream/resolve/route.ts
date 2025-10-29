@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "URL is required" }, { status: 400 })
     }
 
-    console.log("[v0] Resolving stream URL:", url)
+    console.log(" Resolving stream URL:", url)
 
     // Fetch the URL and follow redirects
     const response = await fetch(url, {
@@ -19,9 +19,9 @@ export async function POST(request: NextRequest) {
     // Get the final URL after redirects
     const resolvedUrl = response.url
 
-    console.log("[v0] Resolved URL:", resolvedUrl)
-    console.log("[v0] Response status:", response.status)
-    console.log("[v0] Content-Type:", response.headers.get("content-type"))
+    console.log(" Resolved URL:", resolvedUrl)
+    console.log(" Response status:", response.status)
+    console.log(" Content-Type:", response.headers.get("content-type"))
 
     return NextResponse.json({
       originalUrl: url,
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
       contentType: response.headers.get("content-type"),
     })
   } catch (error) {
-    console.error("[v0] Error resolving stream URL:", error)
+    console.error(" Error resolving stream URL:", error)
     return NextResponse.json(
       {
         error: "Failed to resolve stream URL",

@@ -96,7 +96,7 @@ export default function AdminPage() {
           }).length || 0,
       })
     } catch (err) {
-      console.error("[v0] Failed to load admin data:", err)
+      console.error(" Failed to load admin data:", err)
     }
   }
 
@@ -112,7 +112,7 @@ export default function AdminPage() {
         loadAdminData()
       }
     } catch (err) {
-      console.error("[v0] Failed to delete playlist:", err)
+      console.error(" Failed to delete playlist:", err)
     }
   }
 

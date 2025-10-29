@@ -10,7 +10,7 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "IPTV Player - Stream Live TV, Movies & Series",
   description: "Professional IPTV streaming application with playlist management",
-  generator: "v0.app",
+  generator: "sinfo security",
 }
 
 export default function RootLayout({

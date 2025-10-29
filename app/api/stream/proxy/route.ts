@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "URL parameter is required" }, { status: 400 })
     }
 
-    console.log("[v0] Proxying stream request for:", url)
+    console.log(" Proxying stream request for:", url)
 
     // Fetch the stream from the IPTV provider with timeout
     const controller = new AbortController()
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
       clearTimeout(timeoutId)
 
       if (!response.ok) {
-        console.error("[v0] Proxy fetch failed:", response.status, response.statusText)
+        console.error(" Proxy fetch failed:", response.status, response.statusText)
         return NextResponse.json(
           {
             error: `Failed to fetch stream: ${response.statusText}`,
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
       }
 
       const contentType = response.headers.get("content-type") || "application/octet-stream"
-      console.log("[v0] Stream content-type:", contentType)
+      console.log(" Stream content-type:", contentType)
 
       // If it's an HLS manifest, rewrite the URLs to go through our proxy
       if (
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
         url.includes(".m3u8")
       ) {
         const text = await response.text()
-        console.log("[v0] Rewriting HLS manifest URLs")
+        console.log(" Rewriting HLS manifest URLs")
 
         // Rewrite relative URLs in the manifest to absolute URLs through our proxy
         const baseUrl = new URL(url)
@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
       clearTimeout(timeoutId)
 
       // Log detailed error information
-      console.error("[v0] Fetch error details:", {
+      console.error(" Fetch error details:", {
         error: fetchError,
         message: fetchError instanceof Error ? fetchError.message : "Unknown error",
         name: fetchError instanceof Error ? fetchError.name : "Unknown",
@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
       throw fetchError
     }
   } catch (error) {
-    console.error("[v0] Proxy error:", {
+    console.error(" Proxy error:", {
       error: error,
       message: error instanceof Error ? error.message : "Unknown error",
       stack: error instanceof Error ? error.stack : undefined,

@@ -78,7 +78,7 @@ export function VideoPlayer() {
         throw new Error(data.error || "Failed to fetch channel")
       }
 
-      console.log("[v0] Channel fetched:", data.channel)
+      console.log(" Channel fetched:", data.channel)
       setChannel(data.channel)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load channel")
@@ -91,7 +91,7 @@ export function VideoPlayer() {
     if (!video || !channel) return
 
     const streamUrl = channel.streamUrl
-    console.log("[v0] Original stream URL:", streamUrl)
+    console.log(" Original stream URL:", streamUrl)
 
     let urlToUse = `/api/stream/proxy?url=${encodeURIComponent(streamUrl)}`
     let useProxy = true
@@ -100,20 +100,20 @@ export function VideoPlayer() {
     try {
       const proxyTest = await fetch(urlToUse, { method: "HEAD" })
       if (!proxyTest.ok) {
-        console.log("[v0] Proxy not available, using direct URL")
+        console.log(" Proxy not available, using direct URL")
         urlToUse = streamUrl
         useProxy = false
       } else {
-        console.log("[v0] Using proxy URL:", urlToUse)
+        console.log(" Using proxy URL:", urlToUse)
       }
     } catch (err) {
-      console.log("[v0] Proxy test failed, using direct URL:", err)
+      console.log(" Proxy test failed, using direct URL:", err)
       urlToUse = streamUrl
       useProxy = false
     }
 
     if (Hls.isSupported()) {
-      console.log("[v0] Attempting HLS.js playback (works for both HLS and TS streams)")
+      console.log(" Attempting HLS.js playback (works for both HLS and TS streams)")
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: true,
@@ -121,7 +121,7 @@ export function VideoPlayer() {
         maxBufferLength: 30,
         maxMaxBufferLength: 600,
         xhrSetup: (xhr, url) => {
-          console.log("[v0] XHR setup for URL:", url)
+          console.log(" XHR setup for URL:", url)
           xhr.withCredentials = false
         },
       })
@@ -130,27 +130,27 @@ export function VideoPlayer() {
       hls.attachMedia(video)
 
       hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
-        console.log("[v0] HLS manifest parsed successfully, levels:", data.levels.length)
+        console.log(" HLS manifest parsed successfully, levels:", data.levels.length)
         const availableQualities = data.levels.map((level, index) => `${level.height}p`)
         setQualities(["auto", ...availableQualities])
         setIsLoading(false)
         video.play().catch((err) => {
-          console.error("[v0] Autoplay failed:", err)
+          console.error(" Autoplay failed:", err)
           setError("Click play to start the stream")
           setIsLoading(false)
         })
       })
 
       hls.on(Hls.Events.ERROR, (event, data) => {
-        console.error("[v0] HLS error:", data.type, data.details, data.fatal)
+        console.error(" HLS error:", data.type, data.details, data.fatal)
 
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              console.log("[v0] Network error, attempting to recover...")
+              console.log(" Network error, attempting to recover...")
 
               if (useProxy && data.details === "manifestLoadError") {
-                console.log("[v0] Proxy failed, retrying with direct URL")
+                console.log(" Proxy failed, retrying with direct URL")
                 setError("Proxy failed, trying direct connection...")
                 hls.destroy()
                 hlsRef.current = null
@@ -167,7 +167,7 @@ export function VideoPlayer() {
                   directHls.attachMedia(video)
 
                   directHls.on(Hls.Events.MANIFEST_PARSED, () => {
-                    console.log("[v0] Direct URL worked!")
+                    console.log(" Direct URL worked!")
                     setIsLoading(false)
                     setError("")
                     video.play().catch(() => setError("Click play to start"))
@@ -175,7 +175,7 @@ export function VideoPlayer() {
 
                   directHls.on(Hls.Events.ERROR, (e, d) => {
                     if (d.fatal) {
-                      console.error("[v0] Direct URL also failed, trying direct video playback")
+                      console.error(" Direct URL also failed, trying direct video playback")
                       directHls.destroy()
                       tryDirectPlayback(streamUrl)
                     }
@@ -191,12 +191,12 @@ export function VideoPlayer() {
               }
               break
             case Hls.ErrorTypes.MEDIA_ERROR:
-              console.log("[v0] Media error, attempting to recover...")
+              console.log(" Media error, attempting to recover...")
               setError("Media error - retrying...")
               hls.recoverMediaError()
               break
             default:
-              console.error("[v0] Fatal HLS error, trying direct video playback as fallback")
+              console.error(" Fatal HLS error, trying direct video playback as fallback")
               setError("Trying alternative playback method...")
               hls.destroy()
               hlsRef.current = null
@@ -208,20 +208,20 @@ export function VideoPlayer() {
 
       hlsRef.current = hls
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      console.log("[v0] Using native HLS support (Safari)")
+      console.log(" Using native HLS support (Safari)")
       video.src = urlToUse
       video.addEventListener("loadedmetadata", () => {
-        console.log("[v0] Video metadata loaded")
+        console.log(" Video metadata loaded")
         setIsLoading(false)
         video.play().catch((err) => {
-          console.error("[v0] Autoplay failed:", err)
+          console.error(" Autoplay failed:", err)
           setError("Click play to start the stream")
         })
       })
       video.addEventListener("error", (e) => {
-        console.error("[v0] Video error:", e)
+        console.error(" Video error:", e)
         if (useProxy) {
-          console.log("[v0] Trying direct URL after error")
+          console.log(" Trying direct URL after error")
           video.src = streamUrl
           video.load()
         } else {
@@ -230,16 +230,16 @@ export function VideoPlayer() {
         }
       })
     } else {
-      console.log("[v0] HLS.js not supported, using direct video playback")
+      console.log(" HLS.js not supported, using direct video playback")
       tryDirectPlayback(streamUrl)
     }
 
     video.addEventListener("play", () => {
-      console.log("[v0] Video playing")
+      console.log(" Video playing")
       setIsPlaying(true)
     })
     video.addEventListener("pause", () => {
-      console.log("[v0] Video paused")
+      console.log(" Video paused")
       setIsPlaying(false)
     })
     video.addEventListener("timeupdate", () => setCurrentTime(video.currentTime))
@@ -249,10 +249,10 @@ export function VideoPlayer() {
       setIsMuted(video.muted)
     })
     video.addEventListener("waiting", () => {
-      console.log("[v0] Video buffering...")
+      console.log(" Video buffering...")
     })
     video.addEventListener("canplay", () => {
-      console.log("[v0] Video can play")
+      console.log(" Video can play")
       setIsLoading(false)
     })
   }
@@ -261,28 +261,28 @@ export function VideoPlayer() {
     const video = videoRef.current
     if (!video) return
 
-    console.log("[v0] Setting up direct video playback with URL:", streamUrl)
+    console.log(" Setting up direct video playback with URL:", streamUrl)
     video.src = streamUrl
     video.crossOrigin = "anonymous"
 
     const handleLoadedMetadata = () => {
-      console.log("[v0] Direct playback: metadata loaded")
-      console.log("[v0] Video duration:", video.duration)
-      console.log("[v0] Video ready state:", video.readyState)
+      console.log(" Direct playback: metadata loaded")
+      console.log(" Video duration:", video.duration)
+      console.log(" Video ready state:", video.readyState)
       setIsLoading(false)
       setError("")
       video.play().catch(() => setError("Click play to start"))
     }
 
     const handleCanPlay = () => {
-      console.log("[v0] Direct playback: can play")
+      console.log(" Direct playback: can play")
       setIsLoading(false)
       setError("")
     }
 
     const handleError = (e: Event) => {
-      console.error("[v0] Direct playback error event:", e)
-      console.error("[v0] Video error details:", video.error)
+      console.error(" Direct playback error event:", e)
+      console.error(" Video error details:", video.error)
 
       let errorMessage = "Unable to play stream"
       if (video.error) {
@@ -307,11 +307,11 @@ export function VideoPlayer() {
     }
 
     const handleWaiting = () => {
-      console.log("[v0] Video buffering...")
+      console.log(" Video buffering...")
     }
 
     const handlePlaying = () => {
-      console.log("[v0] Video is playing")
+      console.log(" Video is playing")
       setIsLoading(false)
       setError("")
     }
@@ -331,7 +331,7 @@ export function VideoPlayer() {
         videoRef.current.pause()
       } else {
         videoRef.current.play().catch((err) => {
-          console.error("[v0] Play failed:", err)
+          console.error(" Play failed:", err)
           setError("Failed to play stream")
         })
       }
@@ -381,7 +381,7 @@ export function VideoPlayer() {
         await videoRef.current.requestPictureInPicture()
       }
     } catch (err) {
-      console.error("[v0] PiP error:", err)
+      console.error(" PiP error:", err)
     }
   }
 
