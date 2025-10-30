@@ -46,9 +46,20 @@ export function VideoPlayer() {
   const [duration, setDuration] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
+  const [showPlayOverlay, setShowPlayOverlay] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
   const [qualities, setQualities] = useState<string[]>([])
   const [currentQuality, setCurrentQuality] = useState<string>("auto")
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(false)
+
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+      setIsMobile(mobile)
+      console.log("[v0] Mobile device detected:", mobile)
+    }
+    checkMobile()
+  }, [])
 
   useEffect(() => {
     if (!channelId) {
@@ -78,7 +89,7 @@ export function VideoPlayer() {
         throw new Error(data.error || "Failed to fetch channel")
       }
 
-      console.log(" Channel fetched:", data.channel)
+      console.log("[v0] Channel fetched:", data.channel)
       setChannel(data.channel)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load channel")
@@ -91,155 +102,155 @@ export function VideoPlayer() {
     if (!video || !channel) return
 
     const streamUrl = channel.streamUrl
-    console.log(" Original stream URL:", streamUrl)
+    console.log("[v0] Original stream URL:", streamUrl)
+    console.log("[v0] Is mobile:", isMobile)
+
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    const canPlayNativeHLS = video.canPlayType("application/vnd.apple.mpegurl")
+
+    if (isIOS || canPlayNativeHLS) {
+      console.log("[v0] Using native HLS support (iOS/Safari)")
+      setupNativeHLS(streamUrl)
+      return
+    }
 
     let urlToUse = `/api/stream/proxy?url=${encodeURIComponent(streamUrl)}`
     let useProxy = true
 
-    // Test if proxy is working
     try {
       const proxyTest = await fetch(urlToUse, { method: "HEAD" })
       if (!proxyTest.ok) {
-        console.log(" Proxy not available, using direct URL")
+        console.log("[v0] Proxy not available, using direct URL")
         urlToUse = streamUrl
         useProxy = false
       } else {
-        console.log(" Using proxy URL:", urlToUse)
+        console.log("[v0] Using proxy URL:", urlToUse)
       }
     } catch (err) {
-      console.log(" Proxy test failed, using direct URL:", err)
+      console.log("[v0] Proxy test failed, using direct URL:", err)
       urlToUse = streamUrl
       useProxy = false
     }
 
     if (Hls.isSupported()) {
-      console.log(" Attempting HLS.js playback (works for both HLS and TS streams)")
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: true,
-        backBufferLength: 90,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 600,
-        xhrSetup: (xhr, url) => {
-          console.log(" XHR setup for URL:", url)
-          xhr.withCredentials = false
-        },
-      })
-
-      hls.loadSource(urlToUse)
-      hls.attachMedia(video)
-
-      hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
-        console.log(" HLS manifest parsed successfully, levels:", data.levels.length)
-        const availableQualities = data.levels.map((level, index) => `${level.height}p`)
-        setQualities(["auto", ...availableQualities])
-        setIsLoading(false)
-        video.play().catch((err) => {
-          console.error(" Autoplay failed:", err)
-          setError("Click play to start the stream")
-          setIsLoading(false)
-        })
-      })
-
-      hls.on(Hls.Events.ERROR, (event, data) => {
-        console.error(" HLS error:", data.type, data.details, data.fatal)
-
-        if (data.fatal) {
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              console.log(" Network error, attempting to recover...")
-
-              if (useProxy && data.details === "manifestLoadError") {
-                console.log(" Proxy failed, retrying with direct URL")
-                setError("Proxy failed, trying direct connection...")
-                hls.destroy()
-                hlsRef.current = null
-                // Retry with direct URL
-                setTimeout(() => {
-                  const directHls = new Hls({
-                    enableWorker: true,
-                    lowLatencyMode: true,
-                    xhrSetup: (xhr) => {
-                      xhr.withCredentials = false
-                    },
-                  })
-                  directHls.loadSource(streamUrl)
-                  directHls.attachMedia(video)
-
-                  directHls.on(Hls.Events.MANIFEST_PARSED, () => {
-                    console.log(" Direct URL worked!")
-                    setIsLoading(false)
-                    setError("")
-                    video.play().catch(() => setError("Click play to start"))
-                  })
-
-                  directHls.on(Hls.Events.ERROR, (e, d) => {
-                    if (d.fatal) {
-                      console.error(" Direct URL also failed, trying direct video playback")
-                      directHls.destroy()
-                      tryDirectPlayback(streamUrl)
-                    }
-                  })
-
-                  hlsRef.current = directHls
-                }, 500)
-              } else {
-                setError("Network error - retrying...")
-                setTimeout(() => {
-                  hls.startLoad()
-                }, 1000)
-              }
-              break
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              console.log(" Media error, attempting to recover...")
-              setError("Media error - retrying...")
-              hls.recoverMediaError()
-              break
-            default:
-              console.error(" Fatal HLS error, trying direct video playback as fallback")
-              setError("Trying alternative playback method...")
-              hls.destroy()
-              hlsRef.current = null
-              tryDirectPlayback(streamUrl)
-              break
-          }
-        }
-      })
-
-      hlsRef.current = hls
-    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      console.log(" Using native HLS support (Safari)")
-      video.src = urlToUse
-      video.addEventListener("loadedmetadata", () => {
-        console.log(" Video metadata loaded")
-        setIsLoading(false)
-        video.play().catch((err) => {
-          console.error(" Autoplay failed:", err)
-          setError("Click play to start the stream")
-        })
-      })
-      video.addEventListener("error", (e) => {
-        console.error(" Video error:", e)
-        if (useProxy) {
-          console.log(" Trying direct URL after error")
-          video.src = streamUrl
-          video.load()
-        } else {
-          setError("Failed to load stream")
-          setIsLoading(false)
-        }
-      })
+      console.log("[v0] Attempting HLS.js playback")
+      setupHLSjs(urlToUse, streamUrl, useProxy)
     } else {
-      console.log(" HLS.js not supported, using direct video playback")
+      console.log("[v0] HLS.js not supported, using direct video playback")
       tryDirectPlayback(streamUrl)
     }
 
+    setupVideoEventListeners()
+  }
+
+  const setupNativeHLS = (streamUrl: string) => {
+    const video = videoRef.current
+    if (!video) return
+
+    video.src = streamUrl
+    video.playsInline = true
+    video.preload = "auto"
+
+    const handleLoadedMetadata = () => {
+      console.log("[v0] Native HLS: metadata loaded")
+      setIsLoading(false)
+      video.play().catch((err) => {
+        console.log("[v0] Autoplay prevented:", err)
+        if (!isMobile) {
+          setShowPlayOverlay(true)
+        }
+      })
+    }
+
+    const handleError = (e: Event) => {
+      console.error("[v0] Native HLS error:", video.error)
+      setError("Failed to load stream")
+      setIsLoading(false)
+      setShowPlayOverlay(true)
+    }
+
+    video.addEventListener("loadedmetadata", handleLoadedMetadata)
+    video.addEventListener("error", handleError)
+    video.load()
+  }
+
+  const setupHLSjs = (urlToUse: string, streamUrl: string, useProxy: boolean) => {
+    const video = videoRef.current
+    if (!video) return
+
+    const hls = new Hls({
+      enableWorker: true,
+      lowLatencyMode: true,
+      backBufferLength: 90,
+      maxBufferLength: 30,
+      maxMaxBufferLength: 600,
+      xhrSetup: (xhr, url) => {
+        xhr.withCredentials = false
+      },
+    })
+
+    hls.loadSource(urlToUse)
+    hls.attachMedia(video)
+
+    hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
+      console.log("[v0] HLS manifest parsed successfully, levels:", data.levels.length)
+      const availableQualities = data.levels.map((level, index) => `${level.height}p`)
+      setQualities(["auto", ...availableQualities])
+      setIsLoading(false)
+
+      video.play().catch((err) => {
+        console.log("[v0] Autoplay prevented:", err)
+        if (!isMobile) {
+          setShowPlayOverlay(true)
+        }
+      })
+    })
+
+    hls.on(Hls.Events.ERROR, (event, data) => {
+      console.error("[v0] HLS error:", data.type, data.details, data.fatal)
+
+      if (data.fatal) {
+        switch (data.type) {
+          case Hls.ErrorTypes.NETWORK_ERROR:
+            console.log("[v0] Network error, attempting to recover...")
+
+            if (useProxy && data.details === "manifestLoadError") {
+              console.log("[v0] Proxy failed, retrying with direct URL")
+              hls.destroy()
+              hlsRef.current = null
+              setTimeout(() => setupHLSjs(streamUrl, streamUrl, false), 500)
+            } else {
+              setTimeout(() => hls.startLoad(), 1000)
+            }
+            break
+          case Hls.ErrorTypes.MEDIA_ERROR:
+            console.log("[v0] Media error, attempting to recover...")
+            hls.recoverMediaError()
+            break
+          default:
+            console.error("[v0] Fatal HLS error, trying direct video playback")
+            hls.destroy()
+            hlsRef.current = null
+            tryDirectPlayback(streamUrl)
+            break
+        }
+      }
+    })
+
+    hlsRef.current = hls
+  }
+
+  const setupVideoEventListeners = () => {
+    const video = videoRef.current
+    if (!video) return
+
     video.addEventListener("play", () => {
-      console.log(" Video playing")
+      console.log("[v0] Video playing")
       setIsPlaying(true)
+      setShowPlayOverlay(false)
     })
     video.addEventListener("pause", () => {
-      console.log(" Video paused")
+      console.log("[v0] Video paused")
       setIsPlaying(false)
     })
     video.addEventListener("timeupdate", () => setCurrentTime(video.currentTime))
@@ -249,10 +260,10 @@ export function VideoPlayer() {
       setIsMuted(video.muted)
     })
     video.addEventListener("waiting", () => {
-      console.log(" Video buffering...")
+      console.log("[v0] Video buffering...")
     })
     video.addEventListener("canplay", () => {
-      console.log(" Video can play")
+      console.log("[v0] Video can play")
       setIsLoading(false)
     })
   }
@@ -261,67 +272,32 @@ export function VideoPlayer() {
     const video = videoRef.current
     if (!video) return
 
-    console.log(" Setting up direct video playback with URL:", streamUrl)
+    console.log("[v0] Setting up direct video playback with URL:", streamUrl)
     video.src = streamUrl
     video.crossOrigin = "anonymous"
+    video.playsInline = true
 
     const handleLoadedMetadata = () => {
-      console.log(" Direct playback: metadata loaded")
-      console.log(" Video duration:", video.duration)
-      console.log(" Video ready state:", video.readyState)
+      console.log("[v0] Direct playback: metadata loaded")
       setIsLoading(false)
-      setError("")
-      video.play().catch(() => setError("Click play to start"))
-    }
 
-    const handleCanPlay = () => {
-      console.log(" Direct playback: can play")
-      setIsLoading(false)
-      setError("")
+      video.play().catch((err) => {
+        console.log("[v0] Autoplay prevented:", err)
+        if (!isMobile) {
+          setShowPlayOverlay(true)
+        }
+      })
     }
 
     const handleError = (e: Event) => {
-      console.error(" Direct playback error event:", e)
-      console.error(" Video error details:", video.error)
-
-      let errorMessage = "Unable to play stream"
-      if (video.error) {
-        switch (video.error.code) {
-          case MediaError.MEDIA_ERR_ABORTED:
-            errorMessage = "Stream loading was aborted"
-            break
-          case MediaError.MEDIA_ERR_NETWORK:
-            errorMessage = "Network error while loading stream"
-            break
-          case MediaError.MEDIA_ERR_DECODE:
-            errorMessage = "Stream format not supported or corrupted"
-            break
-          case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            errorMessage = "Stream format not supported by your browser"
-            break
-        }
-      }
-
-      setError(errorMessage)
+      console.error("[v0] Direct playback error:", video.error)
+      setError("Unable to play stream")
       setIsLoading(false)
-    }
-
-    const handleWaiting = () => {
-      console.log(" Video buffering...")
-    }
-
-    const handlePlaying = () => {
-      console.log(" Video is playing")
-      setIsLoading(false)
-      setError("")
+      setShowPlayOverlay(true)
     }
 
     video.addEventListener("loadedmetadata", handleLoadedMetadata)
-    video.addEventListener("canplay", handleCanPlay)
     video.addEventListener("error", handleError)
-    video.addEventListener("waiting", handleWaiting)
-    video.addEventListener("playing", handlePlaying)
-
     video.load()
   }
 
@@ -331,8 +307,10 @@ export function VideoPlayer() {
         videoRef.current.pause()
       } else {
         videoRef.current.play().catch((err) => {
-          console.error(" Play failed:", err)
-          setError("Failed to play stream")
+          console.error("[v0] Play failed:", err)
+          if (!isMobile) {
+            setShowPlayOverlay(true)
+          }
         })
       }
     }
@@ -381,7 +359,7 @@ export function VideoPlayer() {
         await videoRef.current.requestPictureInPicture()
       }
     } catch (err) {
-      console.error(" PiP error:", err)
+      console.error("[v0] PiP error:", err)
     }
   }
 
@@ -434,10 +412,10 @@ export function VideoPlayer() {
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange)
   }, [])
 
-  if (error) {
+  if (!channel && !isLoading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
-        <p className="text-destructive">{error}</p>
+        <p className="text-destructive">{error || "Channel not found"}</p>
         <Button onClick={() => router.push("/main")}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Main
@@ -452,8 +430,9 @@ export function VideoPlayer() {
       className="relative flex h-screen w-full items-center justify-center bg-black"
       onMouseMove={handleMouseMove}
       onMouseLeave={() => isPlaying && setShowControls(false)}
+      onTouchStart={() => setShowControls(true)}
     >
-      <video ref={videoRef} className="h-full w-full" onClick={togglePlay} />
+      <video ref={videoRef} className="h-full w-full" onClick={togglePlay} playsInline preload="auto" />
 
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center">
@@ -461,13 +440,30 @@ export function VideoPlayer() {
         </div>
       )}
 
-      {/* Controls Overlay */}
+      {showPlayOverlay && !isPlaying && !error && !isMobile && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/50 backdrop-blur-sm">
+          <Button size="lg" onClick={togglePlay} className="h-20 w-20 rounded-full bg-primary hover:bg-primary/90">
+            <Play className="h-10 w-10 fill-current" />
+          </Button>
+          <p className="text-sm text-white">Tap to play</p>
+        </div>
+      )}
+
+      {error && !isPlaying && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/80">
+          <p className="text-center text-destructive">{error}</p>
+          <Button onClick={() => router.push("/main")} variant="outline">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Main
+          </Button>
+        </div>
+      )}
+
       <div
         className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/80 transition-opacity duration-300 ${
-          showControls ? "opacity-100" : "opacity-0"
+          showControls && !showPlayOverlay ? "opacity-100" : "opacity-0"
         }`}
       >
-        {/* Top Bar */}
         <div className="absolute left-0 right-0 top-0 flex items-center justify-between p-4">
           <Button variant="ghost" size="icon" onClick={() => router.push("/main")} className="text-white">
             <ArrowLeft className="h-5 w-5" />
@@ -478,9 +474,7 @@ export function VideoPlayer() {
           <div className="w-10" />
         </div>
 
-        {/* Bottom Controls */}
         <div className="absolute bottom-0 left-0 right-0 space-y-2 p-4">
-          {/* Progress Bar */}
           {duration > 0 && (
             <div className="flex items-center gap-2">
               <span className="text-xs text-white">{formatTime(currentTime)}</span>
@@ -489,19 +483,20 @@ export function VideoPlayer() {
             </div>
           )}
 
-          {/* Control Buttons */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="icon" onClick={togglePlay} className="text-white">
                 {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
               </Button>
 
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" onClick={toggleMute} className="text-white">
-                  {isMuted || volume === 0 ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
-                </Button>
-                <Slider value={[volume]} max={100} step={1} onValueChange={handleVolumeChange} className="w-24" />
-              </div>
+              {!isMobile && (
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="icon" onClick={toggleMute} className="text-white">
+                    {isMuted || volume === 0 ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+                  </Button>
+                  <Slider value={[volume]} max={100} step={1} onValueChange={handleVolumeChange} className="w-24" />
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -526,18 +521,22 @@ export function VideoPlayer() {
                 </DropdownMenu>
               )}
 
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setSubtitlesEnabled(!subtitlesEnabled)}
-                className="text-white"
-              >
-                <Subtitles className="h-5 w-5" />
-              </Button>
+              {!isMobile && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setSubtitlesEnabled(!subtitlesEnabled)}
+                    className="text-white"
+                  >
+                    <Subtitles className="h-5 w-5" />
+                  </Button>
 
-              <Button variant="ghost" size="icon" onClick={togglePiP} className="text-white">
-                <PictureInPicture className="h-5 w-5" />
-              </Button>
+                  <Button variant="ghost" size="icon" onClick={togglePiP} className="text-white">
+                    <PictureInPicture className="h-5 w-5" />
+                  </Button>
+                </>
+              )}
 
               <Button variant="ghost" size="icon" onClick={toggleFullscreen} className="text-white">
                 {isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
