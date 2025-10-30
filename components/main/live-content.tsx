@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Search, Play, Grid3x3, List, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, Play, Grid3x3, List, ChevronLeft, ChevronRight, Filter } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface Channel {
   id: string
@@ -161,30 +161,33 @@ export function LiveContent() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <span>
-          {filteredChannels.length === allChannels.length
-            ? `${allChannels.length.toLocaleString()} total channels loaded`
-            : `${filteredChannels.length.toLocaleString()} of ${allChannels.length.toLocaleString()} channels`}
-        </span>
-        {totalPages > 1 && (
+      <div className="flex items-center justify-between gap-4">
+        <div className="text-sm text-muted-foreground">
           <span>
-            Page {currentPage} of {totalPages}
+            {filteredChannels.length === allChannels.length
+              ? `${allChannels.length.toLocaleString()} total channels loaded`
+              : `${filteredChannels.length.toLocaleString()} of ${allChannels.length.toLocaleString()} channels`}
           </span>
-        )}
-      </div>
+          {totalPages > 1 && (
+            <span className="ml-4">
+              Page {currentPage} of {totalPages}
+            </span>
+          )}
+        </div>
 
-      <div className="flex flex-wrap gap-2">
-        {groups.map((group) => (
-          <Badge
-            key={group}
-            variant={selectedGroup === group ? "default" : "outline"}
-            className="cursor-pointer"
-            onClick={() => setSelectedGroup(group)}
-          >
-            {group === "all" ? "All Channels" : group}
-          </Badge>
-        ))}
+        <Select value={selectedGroup} onValueChange={setSelectedGroup}>
+          <SelectTrigger className="w-[200px]">
+            <Filter className="mr-2 h-4 w-4" />
+            <SelectValue placeholder="Filter by category" />
+          </SelectTrigger>
+          <SelectContent>
+            {groups.map((group) => (
+              <SelectItem key={group} value={group}>
+                {group === "all" ? "All Channels" : group}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {filteredChannels.length === 0 ? (

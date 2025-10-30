@@ -15,6 +15,7 @@ export default function MainPage() {
   const router = useRouter()
   const [activeSection, setActiveSection] = useState<NavSection>("live")
   const [isLoading, setIsLoading] = useState(true)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     // Check if user has a playlist
@@ -47,6 +48,10 @@ export default function MainPage() {
     }
   }
 
+  const handlePlaylistSwitch = () => {
+    setReloadKey((prev) => prev + 1)
+  }
+
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -64,12 +69,13 @@ export default function MainPage() {
         onSettings={handleSettings}
         onReload={handleReload}
         onExit={handleExit}
+        onPlaylistSwitch={handlePlaylistSwitch}
       />
 
       <main className="flex-1 p-6">
-        {activeSection === "live" && <LiveContent />}
-        {activeSection === "movies" && <MoviesContent />}
-        {activeSection === "series" && <SeriesContent />}
+        {activeSection === "live" && <LiveContent key={`live-${reloadKey}`} />}
+        {activeSection === "movies" && <MoviesContent key={`movies-${reloadKey}`} />}
+        {activeSection === "series" && <SeriesContent key={`series-${reloadKey}`} />}
         {activeSection === "account" && <UserAccount />}
       </main>
     </div>

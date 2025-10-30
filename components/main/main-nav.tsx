@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -7,8 +8,9 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu"
-import { Tv2, Film, Clapperboard, User, Menu, Settings, RefreshCw, LogOut, List } from "lucide-react"
+import { Tv2, Film, Clapperboard, User, Menu, Settings, RefreshCw, LogOut, List, Check } from "lucide-react"
 import Image from "next/image"
 
 type NavSection = "live" | "movies" | "series" | "account"
@@ -20,6 +22,7 @@ interface MainNavProps {
   onSettings: () => void
   onReload: () => void
   onExit: () => void
+  onPlaylistSwitch: () => void
 }
 
 export function MainNav({
@@ -29,7 +32,12 @@ export function MainNav({
   onSettings,
   onReload,
   onExit,
+  onPlaylistSwitch,
 }: MainNavProps) {
+  const [playlists, setPlaylists] = useState<Playlist[]>([])
+  const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null)
+  const [isLoadingPlaylists, setIsLoadingPlaylists] = useState(false)
+
   const navItems = [
     { id: "live" as NavSection, label: "Live TV", icon: Tv2 },
     { id: "movies" as NavSection, label: "Movies", icon: Film },
@@ -37,12 +45,46 @@ export function MainNav({
     { id: "account" as NavSection, label: "Account", icon: User },
   ]
 
+  useEffect(() => {
+    fetchPlaylists()
+    const storedPlaylistId = localStorage.getItem("activePlaylistId")
+    setActivePlaylistId(storedPlaylistId)
+  }, [])
+
+  const fetchPlaylists = async () => {
+    try {
+      setIsLoadingPlaylists(true)
+      const deviceKey = localStorage.getItem("deviceKey")
+      if (!deviceKey) return
+
+      const response = await fetch(`/api/playlists?deviceKey=${deviceKey}`)
+      const data = await response.json()
+
+      if (response.ok) {
+        setPlaylists(data.playlists || [])
+      }
+    } catch (err) {
+      console.error("Failed to fetch playlists:", err)
+    } finally {
+      setIsLoadingPlaylists(false)
+    }
+  }
+
+  const handleSwitchPlaylist = async (playlistId: string) => {
+    localStorage.setItem("activePlaylistId", playlistId)
+    setPlaylists(playlists.map((p) => ({ ...p, isActive: p.id === playlistId })))
+    setActivePlaylistId(playlistId)
+    onPlaylistSwitch()
+  }
+
+  const activePlaylist = playlists.find((p) => p.id === activePlaylistId)
+
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-16 items-center gap-4 px-6">
         <div className="flex items-center gap-3">
-          <Image src="/logo.png" alt="Supreme IPTV" width={60} height={60} className="h-10 w-10 object-contain" />
-          <span className="text-xl font-bold">Supreme IPTV</span>
+          <Image src="/logo.png" alt="Supreme IPTU" width={40} height={40} className="h-10 w-10 object-contain" />
+          <span className="text-xl font-bold">Supreme IPTU</span>
         </div>
 
         {/* Desktop Navigation */}
@@ -67,15 +109,45 @@ export function MainNav({
         <div className="hidden items-center gap-2 md:flex">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2 bg-transparent">
+                <List className="h-4 w-4" />
+                {activePlaylist ? activePlaylist.name : "Playlists"}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel>Switch Playlist</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {isLoadingPlaylists ? (
+                <DropdownMenuItem disabled>Loading playlists...</DropdownMenuItem>
+              ) : playlists.length === 0 ? (
+                <DropdownMenuItem disabled>No playlists found</DropdownMenuItem>
+              ) : (
+                playlists.map((playlist) => (
+                  <DropdownMenuItem
+                    key={playlist.id}
+                    onClick={() => handleSwitchPlaylist(playlist.id)}
+                    className="flex items-center justify-between"
+                  >
+                    <span className="truncate">{playlist.name}</span>
+                    {playlist.id === activePlaylistId && <Check className="h-4 w-4 text-primary" />}
+                  </DropdownMenuItem>
+                ))
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onChangePlaylist}>
+                <List className="mr-2 h-4 w-4" />
+                Manage Playlists
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon">
                 <Menu className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={onChangePlaylist}>
-                <List className="mr-2 h-4 w-4" />
-                Change Playlist
-              </DropdownMenuItem>
               <DropdownMenuItem onClick={onSettings}>
                 <Settings className="mr-2 h-4 w-4" />
                 Settings
@@ -112,10 +184,28 @@ export function MainNav({
                 )
               })}
               <DropdownMenuSeparator />
+              <DropdownMenuLabel>Playlists</DropdownMenuLabel>
+              {isLoadingPlaylists ? (
+                <DropdownMenuItem disabled>Loading...</DropdownMenuItem>
+              ) : playlists.length === 0 ? (
+                <DropdownMenuItem disabled>No playlists</DropdownMenuItem>
+              ) : (
+                playlists.slice(0, 3).map((playlist) => (
+                  <DropdownMenuItem
+                    key={playlist.id}
+                    onClick={() => handleSwitchPlaylist(playlist.id)}
+                    className="flex items-center justify-between"
+                  >
+                    <span className="truncate text-sm">{playlist.name}</span>
+                    {playlist.id === activePlaylistId && <Check className="h-3 w-3" />}
+                  </DropdownMenuItem>
+                ))
+              )}
               <DropdownMenuItem onClick={onChangePlaylist}>
                 <List className="mr-2 h-4 w-4" />
-                Change Playlist
+                Manage Playlists
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onSettings}>
                 <Settings className="mr-2 h-4 w-4" />
                 Settings
@@ -135,4 +225,10 @@ export function MainNav({
       </div>
     </header>
   )
+}
+
+interface Playlist {
+  id: string
+  name: string
+  isActive: boolean
 }

@@ -213,12 +213,11 @@ export function VideoPlayer() {
         switch (data.type) {
           case Hls.ErrorTypes.NETWORK_ERROR:
             console.log("[v0] Network error, attempting to recover...")
-
             if (useProxy && data.details === "manifestLoadError") {
-              console.log("[v0] Proxy failed, retrying with direct URL")
+              console.log("[v0] Proxy failed, switching to direct URL")
               hls.destroy()
               hlsRef.current = null
-              setTimeout(() => setupHLSjs(streamUrl, streamUrl, false), 500)
+              tryDirectPlayback(streamUrl)
             } else {
               setTimeout(() => hls.startLoad(), 1000)
             }
@@ -276,24 +275,38 @@ export function VideoPlayer() {
     video.src = streamUrl
     video.crossOrigin = "anonymous"
     video.playsInline = true
+    video.autoplay = true
+    video.muted = false
 
     const handleLoadedMetadata = () => {
       console.log("[v0] Direct playback: metadata loaded")
       setIsLoading(false)
 
       video.play().catch((err) => {
-        console.log("[v0] Autoplay prevented:", err)
-        if (!isMobile) {
-          setShowPlayOverlay(true)
-        }
+        console.log("[v0] Autoplay prevented, trying muted:", err)
+        video.muted = true
+        video.play().catch((err2) => {
+          console.log("[v0] Muted autoplay also failed:", err2)
+          if (!isMobile) {
+            setShowPlayOverlay(true)
+          }
+        })
       })
     }
 
     const handleError = (e: Event) => {
       console.error("[v0] Direct playback error:", video.error)
-      setError("Unable to play stream")
+      const errorCode = video.error?.code
+      const errorMessage = video.error?.message || "Unable to play stream"
+
+      if (errorCode === 4) {
+        setError("Stream format not supported. This stream may require a different player.")
+      } else if (errorCode === 2) {
+        setError("Network error. Please check your connection and try again.")
+      } else {
+        setError(errorMessage)
+      }
       setIsLoading(false)
-      setShowPlayOverlay(true)
     }
 
     video.addEventListener("loadedmetadata", handleLoadedMetadata)
@@ -416,7 +429,7 @@ export function VideoPlayer() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
         <p className="text-destructive">{error || "Channel not found"}</p>
-        <Button onClick={() => router.push("/main")}>
+        <Button onClick={() => router.push("/main")} variant="default">
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Main
         </Button>
@@ -451,8 +464,8 @@ export function VideoPlayer() {
 
       {error && !isPlaying && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/80">
-          <p className="text-center text-destructive">{error}</p>
-          <Button onClick={() => router.push("/main")} variant="outline">
+          <p className="text-center text-destructive px-4">{error}</p>
+          <Button onClick={() => router.push("/main")} variant="default">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Main
           </Button>
@@ -465,7 +478,12 @@ export function VideoPlayer() {
         }`}
       >
         <div className="absolute left-0 right-0 top-0 flex items-center justify-between p-4">
-          <Button variant="ghost" size="icon" onClick={() => router.push("/main")} className="text-white">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push("/main")}
+            className="text-white hover:bg-white/20"
+          >
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="text-white">
