@@ -83,8 +83,8 @@ export function MainNav({
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-16 items-center gap-4 px-6">
         <div className="flex items-center gap-3">
-          <Image src="/logo.png" alt="Supreme IPTU" width={40} height={40} className="h-10 w-10 object-contain" />
-          <span className="text-xl font-bold">Supreme IPTU</span>
+          <Image src="/logo.png" alt="Supreme IPTv" width={40} height={40} className="h-10 w-10 object-contain" />
+          <span className="text-xl font-bold">Supreme IPTV</span>
         </div>
 
         {/* Desktop Navigation */}

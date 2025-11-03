@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -15,7 +17,8 @@ import {
   Settings,
   ArrowLeft,
   PictureInPicture,
-  Subtitles,
+  SkipForward,
+  SkipBack,
 } from "lucide-react"
 import Hls from "hls.js"
 
@@ -24,6 +27,7 @@ interface Channel {
   name: string
   streamUrl: string
   logo?: string
+  type: "live" | "movie" | "series" // Added type property
 }
 
 export function VideoPlayer() {
@@ -35,6 +39,7 @@ export function VideoPlayer() {
   const containerRef = useRef<HTMLDivElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const controlsTimeoutRef = useRef<NodeJS.Timeout>()
+  const progressBarRef = useRef<HTMLDivElement>(null)
 
   const [channel, setChannel] = useState<Channel | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -50,7 +55,7 @@ export function VideoPlayer() {
   const [isMobile, setIsMobile] = useState(false)
   const [qualities, setQualities] = useState<string[]>([])
   const [currentQuality, setCurrentQuality] = useState<string>("auto")
-  const [subtitlesEnabled, setSubtitlesEnabled] = useState(false)
+  const [playbackSpeed, setPlaybackSpeed] = useState(1) // Added playback speed state
 
   useEffect(() => {
     const checkMobile = () => {
@@ -315,17 +320,18 @@ export function VideoPlayer() {
   }
 
   const togglePlay = () => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause()
-      } else {
-        videoRef.current.play().catch((err) => {
-          console.error("[v0] Play failed:", err)
-          if (!isMobile) {
-            setShowPlayOverlay(true)
-          }
-        })
-      }
+    const video = videoRef.current
+    if (!video) return
+
+    if (isPlaying) {
+      video.pause()
+    } else {
+      video.play().catch((err) => {
+        console.error("[v0] Play failed:", err)
+        if (!isMobile) {
+          setShowPlayOverlay(true)
+        }
+      })
     }
   }
 
@@ -392,9 +398,22 @@ export function VideoPlayer() {
   }
 
   const handleSeek = (value: number[]) => {
-    if (videoRef.current) {
+    if (videoRef.current && channel?.type !== "live") {
       videoRef.current.currentTime = value[0]
+      setCurrentTime(value[0])
     }
+  }
+
+  const handleProgressBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!progressBarRef.current || !videoRef.current || channel?.type === "live") return
+
+    const rect = progressBarRef.current.getBoundingClientRect()
+    const clickX = e.clientX - rect.left
+    const percentage = clickX / rect.width
+    const newTime = percentage * duration
+
+    videoRef.current.currentTime = newTime
+    setCurrentTime(newTime)
   }
 
   const handleMouseMove = () => {
@@ -409,21 +428,98 @@ export function VideoPlayer() {
     }, 3000)
   }
 
-  const formatTime = (seconds: number) => {
-    if (!isFinite(seconds)) return "00:00"
-    const mins = Math.floor(seconds / 60)
-    const secs = Math.floor(seconds % 60)
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
+  const handleContainerClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement
+    const isControlsArea = target.closest('[data-controls="true"]')
+
+    if (!isControlsArea && showControls) {
+      setShowControls(false)
+    } else if (!showControls) {
+      setShowControls(true)
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current)
+      }
+      controlsTimeoutRef.current = setTimeout(() => {
+        if (isPlaying) {
+          setShowControls(false)
+        }
+      }, 3000)
+    }
+  }
+
+  const handleSpeedChange = (speed: number) => {
+    if (videoRef.current) {
+      videoRef.current.playbackRate = speed
+      setPlaybackSpeed(speed)
+    }
   }
 
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement)
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (!videoRef.current) return
+
+      switch (e.key.toLowerCase()) {
+        case " ":
+        case "k":
+          e.preventDefault()
+          togglePlay()
+          break
+        case "f":
+          e.preventDefault()
+          toggleFullscreen()
+          break
+        case "m":
+          e.preventDefault()
+          toggleMute()
+          break
+        case "arrowleft":
+          e.preventDefault()
+          skipBackward()
+          break
+        case "arrowright":
+          e.preventDefault()
+          skipForward()
+          break
+        case "arrowup":
+          e.preventDefault()
+          handleVolumeChange([Math.min(volume + 10, 100)])
+          break
+        case "arrowdown":
+          e.preventDefault()
+          handleVolumeChange([Math.max(volume - 10, 0)])
+          break
+      }
     }
 
-    document.addEventListener("fullscreenchange", handleFullscreenChange)
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange)
-  }, [])
+    window.addEventListener("keydown", handleKeyPress)
+    return () => window.removeEventListener("keydown", handleKeyPress)
+  }, [isPlaying, volume])
+
+  const skipForward = () => {
+    if (videoRef.current && channel?.type !== "live") {
+      videoRef.current.currentTime = Math.min(videoRef.current.currentTime + 10, duration)
+    }
+  }
+
+  const skipBackward = () => {
+    if (videoRef.current && channel?.type !== "live") {
+      videoRef.current.currentTime = Math.max(videoRef.current.currentTime - 10, 0)
+    }
+  }
+
+  const formatTime = (seconds: number) => {
+    if (!isFinite(seconds)) return "00:00"
+    const hours = Math.floor(seconds / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
+    const secs = Math.floor(seconds % 60)
+
+    if (hours > 0) {
+      return `${hours}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
+    }
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
+  }
+
+  const isOnDemand = channel?.type === "movie" || channel?.type === "series"
 
   if (!channel && !isLoading) {
     return (
@@ -443,7 +539,7 @@ export function VideoPlayer() {
       className="relative flex h-screen w-full items-center justify-center bg-black"
       onMouseMove={handleMouseMove}
       onMouseLeave={() => isPlaying && setShowControls(false)}
-      onTouchStart={() => setShowControls(true)}
+      onClick={handleContainerClick}
     >
       <video ref={videoRef} className="h-full w-full" onClick={togglePlay} playsInline preload="auto" />
 
@@ -473,8 +569,9 @@ export function VideoPlayer() {
       )}
 
       <div
-        className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/80 transition-opacity duration-300 ${
-          showControls && !showPlayOverlay ? "opacity-100" : "opacity-0"
+        data-controls="true"
+        className={`absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/80 transition-opacity duration-300 ${
+          showControls && !showPlayOverlay ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
       >
         <div className="absolute left-0 right-0 top-0 flex items-center justify-between p-4">
@@ -486,77 +583,165 @@ export function VideoPlayer() {
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div className="text-white">
-            <h2 className="text-lg font-semibold">{channel?.name}</h2>
+          <div className="flex-1 text-center text-white">
+            <h2 className="text-lg font-semibold truncate px-4">{channel?.name}</h2>
           </div>
           <div className="w-10" />
         </div>
 
-        <div className="absolute bottom-0 left-0 right-0 space-y-2 p-4">
-          {duration > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-white">{formatTime(currentTime)}</span>
-              <Slider value={[currentTime]} max={duration} step={1} onValueChange={handleSeek} className="flex-1" />
-              <span className="text-xs text-white">{formatTime(duration)}</span>
+        <div className="absolute bottom-0 left-0 right-0 p-4 space-y-3">
+          {isOnDemand && duration > 0 && (
+            <div
+              ref={progressBarRef}
+              className="flex items-center gap-3 cursor-pointer"
+              onClick={handleProgressBarClick}
+            >
+              <span className="text-xs text-white font-medium min-w-[45px]">{formatTime(currentTime)}</span>
+              <Slider
+                value={[currentTime]}
+                max={duration}
+                step={0.1}
+                onValueChange={handleSeek}
+                className="flex-1 cursor-pointer"
+              />
+              <span className="text-xs text-white font-medium min-w-[45px]">{formatTime(duration)}</span>
             </div>
           )}
 
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={togglePlay} className="text-white">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  togglePlay()
+                }}
+                className="text-white hover:bg-white/20"
+              >
                 {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
               </Button>
 
-              {!isMobile && (
-                <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="icon" onClick={toggleMute} className="text-white">
-                    {isMuted || volume === 0 ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
-                  </Button>
-                  <Slider value={[volume]} max={100} step={1} onValueChange={handleVolumeChange} className="w-24" />
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              {qualities.length > 0 && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="text-white">
-                      <Settings className="h-5 w-5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent>
-                    {qualities.map((quality) => (
-                      <DropdownMenuItem
-                        key={quality}
-                        onClick={() => handleQualityChange(quality)}
-                        className={currentQuality === quality ? "bg-accent" : ""}
-                      >
-                        {quality}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-
-              {!isMobile && (
+              {isOnDemand && (
                 <>
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setSubtitlesEnabled(!subtitlesEnabled)}
-                    className="text-white"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      skipBackward()
+                    }}
+                    className="text-white hover:bg-white/20"
                   >
-                    <Subtitles className="h-5 w-5" />
+                    <SkipBack className="h-5 w-5" />
                   </Button>
-
-                  <Button variant="ghost" size="icon" onClick={togglePiP} className="text-white">
-                    <PictureInPicture className="h-5 w-5" />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      skipForward()
+                    }}
+                    className="text-white hover:bg-white/20"
+                  >
+                    <SkipForward className="h-5 w-5" />
                   </Button>
                 </>
               )}
 
-              <Button variant="ghost" size="icon" onClick={toggleFullscreen} className="text-white">
+              {!isMobile && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleMute()
+                    }}
+                    className="text-white hover:bg-white/20"
+                  >
+                    {isMuted || volume === 0 ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+                  </Button>
+                  <Slider
+                    value={[volume]}
+                    max={100}
+                    step={1}
+                    onValueChange={handleVolumeChange}
+                    className="w-24"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
+              )}
+
+              {!isOnDemand && duration > 0 && (
+                <span className="text-xs text-white font-medium ml-2">{formatTime(currentTime)}</span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                  <Button variant="ghost" size="icon" className="text-white hover:bg-white/20">
+                    <Settings className="h-5 w-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                  {isOnDemand && (
+                    <>
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Playback Speed</div>
+                      {[0.5, 0.75, 1, 1.25, 1.5, 2].map((speed) => (
+                        <DropdownMenuItem
+                          key={speed}
+                          onClick={() => handleSpeedChange(speed)}
+                          className={playbackSpeed === speed ? "bg-accent" : ""}
+                        >
+                          {speed}x {speed === 1 && "(Normal)"}
+                        </DropdownMenuItem>
+                      ))}
+                    </>
+                  )}
+
+                  {qualities.length > 0 && (
+                    <>
+                      {isOnDemand && <div className="my-1 h-px bg-border" />}
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Quality</div>
+                      {qualities.map((quality) => (
+                        <DropdownMenuItem
+                          key={quality}
+                          onClick={() => handleQualityChange(quality)}
+                          className={currentQuality === quality ? "bg-accent" : ""}
+                        >
+                          {quality}
+                        </DropdownMenuItem>
+                      ))}
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {!isMobile && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    togglePiP()
+                  }}
+                  className="text-white hover:bg-white/20"
+                >
+                  <PictureInPicture className="h-5 w-5" />
+                </Button>
+              )}
+
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  toggleFullscreen()
+                }}
+                className="text-white hover:bg-white/20"
+              >
                 {isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
               </Button>
             </div>
