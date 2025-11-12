@@ -55,7 +55,7 @@ export function VideoPlayer() {
   const [isMobile, setIsMobile] = useState(false)
   const [qualities, setQualities] = useState<string[]>([])
   const [currentQuality, setCurrentQuality] = useState<string>("auto")
-  const [playbackSpeed, setPlaybackSpeed] = useState(1) // Added playback speed state
+  const [playbackSpeed, setPlaybackSpeed] = useState(1)
 
   useEffect(() => {
     const checkMobile = () => {
