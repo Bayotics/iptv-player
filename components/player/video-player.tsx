@@ -27,7 +27,7 @@ interface Channel {
   name: string
   streamUrl: string
   logo?: string
-  type: "live" | "movie" | "series" // Added type property
+  type: "live" | "movie" | "series"
 }
 
 export function VideoPlayer() {
